@@ -1,0 +1,131 @@
+---
+format: gfm
+---
+
+## Which nonparametric test for mu is best?
+
+There are two nonparametric tests for mu. Which test is best? Is one test better in some situations and the other test better in another situation? This repo compares the two hypothesis tests with data from four different distributions.
+
+Tests:
+
+-   Empirical Likelihood
+-   Wilcoxon Rank Sum
+
+Distributions:
+
+-   Gaussian
+-   Gamma
+-   Uniform
+-   Inverse Gaussian
+
+The main outcome is the empirical likelihood test is superior to the Wilcoxon test.
+
+## Experimental Design
+
+In this experiment, two settings vary. N goes from 25 to 200 increasing by 25. The distribution changes between normal, gamma, uniform and inverse gaussian. Each combination is repeated 100 times. Per row, the two test receive the exact same data and have the exact same null hypothesis.
+
+The first few simulations look like 
+```{r}
+#| include: false
+library(tidyverse)
+library(scales)
+```
+
+```{r}
+#| echo: false
+typeI <- readRDS("data/typeI.rds") %>%
+  select(dist, n, iteration, LR_P, WIL_P) %>%
+  mutate(
+    LR_P = round(LR_P, 4),
+    WIL_P = round(WIL_P, 4)
+  ) %>%
+  arrange(dist, n, iteration)
+typeI %>%
+  print(n = 10)
+```
+
+
+## Type I Error
+
+Each combination of N and distribution is aggregated to calculate type I error. 
+
+For symmetrical distributions, the two tests perform similarly. For asymmetrical distributions, the Wilcoxon test is far from the target 5% type I error. Surprisingly, it performs worse as sample size increases. For the inverse gaussian distribution, it approaches nearly 100% type I error. Symmetry is a critical assumption of the Wilcoxon test.
+
+For all four distributions, the empirical likelihood test achieves the target 5% error and has nearly identical type I error rates when the Wilcoxon test's assumptions are true.
+
+```{r}
+#| echo: false
+#| warning: false
+#| message: false
+calc_type_I <- function(pvalues) {
+  out <- mean(pvalues <= .05)
+}
+
+typeI <- readRDS("data/typeI.rds") %>%
+  select(dist, n, iteration, LR_P, WIL_P) %>%
+  mutate(
+    LR_P = round(LR_P, 4),
+    WIL_P = round(WIL_P, 4)
+  ) %>%
+  arrange(dist, n, iteration)
+
+typeI_02 <- typeI %>%
+  group_by(dist, n) %>%
+  summarise(across(contains("_P"), calc_type_I)) %>%
+  ungroup() %>%
+  pivot_longer(cols = contains("_P"), values_to = "typeI", names_to = "test") %>%
+  mutate(
+    typeI = round(typeI, 2),
+    test = if_else(test == "LR_P", "Likelihood", "Wilcoxon")
+  )
+
+graph <- ggplot(data = typeI_02, mapping = aes(x = n, y = typeI, color = test)) +
+  geom_point() +
+  scale_x_continuous(breaks = seq(25, 200, 25)) +
+  scale_y_continuous(labels = percent, breaks = seq(0, 1, .2), limit = c(0, 1)) +
+  geom_hline(yintercept = .05) +
+  labs(x = "N", y = "Type I") +
+  facet_wrap(~dist)
+
+graph
+```
+## Type II Error
+For type II error, the simulation is repeated. The major change is the null hypothesis is false. Each combination of N and distribution is aggregated to calculate type II error. Note the effect size is only .25.
+
+For symmetrical distributions, type II error is similar for the two tests. For asymmetrical distributions, the empirical likelihood is better. For the inverse gaussian distribution, the Wilcoxon test's type II error does not appear to decrease with increases in sample size.
+
+```{r}
+#| echo: false
+#| warning: false
+#| message: false
+calc_type_II <- function(pvalues) {
+  out <- mean(pvalues > .05)
+}
+
+typeII <- readRDS("data/typeII.rds") %>%
+  select(dist, n, iteration, LR_P, WIL_P) %>%
+  mutate(
+    LR_P = round(LR_P, 4),
+    WIL_P = round(WIL_P, 4)
+  ) %>%
+  arrange(dist, n, iteration)
+
+typeII_02 <- typeII %>%
+  group_by(dist, n) %>%
+  summarise(across(contains("_P"), calc_type_II)) %>%
+  ungroup() %>%
+  pivot_longer(cols = contains("_P"), values_to = "typeII", names_to = "test") %>%
+  mutate(
+    typeII = round(typeII, 2),
+    test = if_else(test == "LR_P", "Likelihood", "Wilcoxon")
+  )
+
+graph <- ggplot(data = typeII_02, mapping = aes(x = n, y = typeII, color = test)) +
+  geom_point() +
+  scale_x_continuous(breaks = seq(25, 200, 25)) +
+  scale_y_continuous(labels = percent, breaks = seq(0, 1, .2), limit = c(0, 1)) +
+  labs(x = "N", y = "Type II") +
+  facet_wrap(~dist)
+
+graph
+```
